@@ -1,0 +1,19 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
+sqlalchemy
+psycopg2-binary
+jinja2
+python-dotenv
+scikit-learn
+nltk
+spacy
+pandas
+numpy
+openpyxl
+joblib
+aiofiles
+httpx
+pdfminer.six           # For parsing PDFs
+docx2txt               # For parsing Word documents
