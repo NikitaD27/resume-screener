@@ -8,7 +8,6 @@ jinja2
 python-dotenv
 scikit-learn
 nltk
-spacy
 pandas
 numpy
 openpyxl
@@ -20,5 +19,4 @@ docx2txt               # For parsing Word documents
 pdfplumber             # For parsing PDFs
 python-docx            # For parsing Word (docx) documents
 groq                   # For LLM API
-sentence-transformers  # For semantic embeddings
-faiss-cpu              # For vector search
+

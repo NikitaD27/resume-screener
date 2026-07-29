@@ -3,15 +3,14 @@ import re
 import shutil
 import traceback
 import numpy as np
-import faiss
-import spacy
 import pdfplumber
 from docx import Document
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sentence_transformers import SentenceTransformer
 from groq import Groq
 from dotenv import load_dotenv
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 # Load .env from the same directory as this file
 _env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
@@ -30,15 +29,23 @@ app.add_middleware(
 UPLOAD_FOLDER = "uploaded_resumes"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+# Optional heavy ML packages with graceful fallback for memory efficiency (e.g. Render 512MB free tier)
 try:
-    nlp = spacy.load("en_core_web_sm")
-except OSError:
-    import subprocess
-    subprocess.run(["python", "-m", "spacy", "download", "en_core_web_sm"])
-    nlp = spacy.load("en_core_web_sm")
+    import faiss
+except ImportError:
+    faiss = None
 
-print("Loading sentence embeddings model...")
-embedder = SentenceTransformer('all-MiniLM-L6-v2')
+try:
+    import spacy
+    nlp = spacy.load("en_core_web_sm")
+except Exception:
+    nlp = None
+
+try:
+    from sentence_transformers import SentenceTransformer
+    embedder = SentenceTransformer('all-MiniLM-L6-v2')
+except Exception:
+    embedder = None
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
@@ -209,31 +216,35 @@ def find_skills_in_text(text: str) -> set:
                 found.add(canonical)
                 break
 
-    # 2. Dynamic NLP Extraction: extract multi-word technical noun phrases with canonical resolution
-    doc = nlp(text_clean[:3000])
-    for chunk in doc.noun_chunks:
-        chunk_str = chunk.text.strip()
-        clean = re.sub(
-            r'^(the|a|an|experience|knowledge|skills|understanding|proficient|strong|hands-on|in|with|of|for|key)\s+',
-            '', chunk_str, flags=re.IGNORECASE
-        ).strip()
+    # 2. Dynamic NLP Extraction if spacy is available
+    if nlp is not None:
+        try:
+            doc = nlp(text_clean[:3000])
+            for chunk in doc.noun_chunks:
+                chunk_str = chunk.text.strip()
+                clean = re.sub(
+                    r'^(the|a|an|experience|knowledge|skills|understanding|proficient|strong|hands-on|in|with|of|for|key)\s+',
+                    '', chunk_str, flags=re.IGNORECASE
+                ).strip()
 
-        # Try canonical match first
-        canonical = match_canonical_skill(clean)
-        if canonical:
-            found.add(canonical)
-            continue
+                # Try canonical match first
+                canonical = match_canonical_skill(clean)
+                if canonical:
+                    found.add(canonical)
+                    continue
 
-        clean_lower = clean.lower()
-        if MONTHS_REGEX.search(clean_lower) or ACTION_WORDS_REGEX.search(clean_lower):
-            continue
+                clean_lower = clean.lower()
+                if MONTHS_REGEX.search(clean_lower) or ACTION_WORDS_REGEX.search(clean_lower):
+                    continue
 
-        if 3 <= len(clean) <= 30 and re.match(r'^[A-Z0-9][A-Za-z0-9\.\-\/\s]+$', clean):
-            if clean_lower not in NON_SKILL_WORDS and not any(w == clean_lower for w in NON_SKILL_WORDS):
-                if clean.isupper() or "/" in clean or "-" in clean or "." in clean:
-                    found.add(clean)
-                else:
-                    found.add(clean.title())
+                if 3 <= len(clean) <= 30 and re.match(r'^[A-Z0-9][A-Za-z0-9\.\-\/\s]+$', clean):
+                    if clean_lower not in NON_SKILL_WORDS and not any(w == clean_lower for w in NON_SKILL_WORDS):
+                        if clean.isupper() or "/" in clean or "-" in clean or "." in clean:
+                            found.add(clean)
+                        else:
+                            found.add(clean.title())
+        except Exception as e:
+            print(f"Spacy extraction skipped: {e}")
 
     return found
 
@@ -255,12 +266,26 @@ def score_skill(skill: str, resume_text: str, jd_skills: set) -> int:
 
 
 def calculate_semantic_score(resume_text: str, jd: str) -> float:
-    """Cosine similarity between resume and JD embeddings."""
-    embeddings = embedder.encode([resume_text, jd])
-    score = np.dot(embeddings[0], embeddings[1]) / (
-        np.linalg.norm(embeddings[0]) * np.linalg.norm(embeddings[1])
-    )
-    return round(float(score) * 100, 2)
+    """Cosine similarity between resume and JD embeddings (SentenceTransformer or TF-IDF)."""
+    if embedder is not None:
+        try:
+            embeddings = embedder.encode([resume_text, jd])
+            score = np.dot(embeddings[0], embeddings[1]) / (
+                np.linalg.norm(embeddings[0]) * np.linalg.norm(embeddings[1])
+            )
+            return round(float(score) * 100, 2)
+        except Exception as e:
+            print(f"SentenceTransformer encoding failed: {e}")
+
+    # High-efficiency TF-IDF fallback (<5MB RAM, instant cosine similarity)
+    try:
+        vectorizer = TfidfVectorizer(stop_words='english')
+        tfidf_matrix = vectorizer.fit_transform([resume_text, jd])
+        score = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
+        return round(float(score) * 100, 2)
+    except Exception as e:
+        print(f"TF-IDF similarity failed: {e}")
+        return 50.0
 
 
 def calculate_ats_score(resume_text: str, jd: str):
@@ -286,13 +311,29 @@ def chunk_text(text: str, chunk_size=400, overlap=50):
 def retrieve_relevant_chunks(chunks, query: str, top_k=3):
     if not chunks:
         return []
-    embeddings = embedder.encode(chunks)
-    q_emb = embedder.encode([query])
-    dim = embeddings.shape[1]
-    index = faiss.IndexFlatL2(dim)
-    index.add(np.array(embeddings).astype("float32"))
-    _, idxs = index.search(np.array(q_emb).astype("float32"), min(top_k, len(chunks)))
-    return [chunks[i] for i in idxs[0] if i != -1]
+    if embedder is not None and faiss is not None:
+        try:
+            embeddings = embedder.encode(chunks)
+            q_emb = embedder.encode([query])
+            dim = embeddings.shape[1]
+            index = faiss.IndexFlatL2(dim)
+            index.add(np.array(embeddings).astype("float32"))
+            _, idxs = index.search(np.array(q_emb).astype("float32"), min(top_k, len(chunks)))
+            return [chunks[i] for i in idxs[0] if i != -1]
+        except Exception as e:
+            print(f"FAISS retrieval failed: {e}")
+
+    # High-efficiency TF-IDF chunk retrieval fallback
+    try:
+        vectorizer = TfidfVectorizer(stop_words='english')
+        tfidf_matrix = vectorizer.fit_transform(chunks + [query])
+        query_vec = tfidf_matrix[-1:]
+        chunk_vecs = tfidf_matrix[:-1]
+        scores = cosine_similarity(query_vec, chunk_vecs)[0]
+        top_indices = np.argsort(scores)[::-1][:top_k]
+        return [chunks[i] for i in top_indices]
+    except Exception:
+        return chunks[:top_k]
 
 
 def call_llm(prompt: str, prompt_type: str = "general", fallback_data: dict = None) -> str:
