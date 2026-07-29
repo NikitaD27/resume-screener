@@ -66,12 +66,11 @@ resume-screener/
 │   └── uploaded_resumes/    # Temp storage for uploaded files
 │
 └── frontend/
-    └── resume-screener-ui/
-        ├── src/
-        │   ├── App.js       # Main React component
-        │   └── App.css      # All custom styles
-        ├── public/
-        └── package.json
+    ├── src/
+    │   ├── App.js       # Main React component
+    │   └── App.css      # All custom styles
+    ├── public/
+    └── package.json
 ```
 
 ---
@@ -138,7 +137,7 @@ curl http://localhost:8000/
 ### 3. Frontend Setup
 
 ```bash
-cd frontend/resume-screener-ui
+cd frontend
 
 # Install dependencies
 npm install

@@ -16,6 +16,8 @@ env/
 
 # Uploaded files (user data — never commit)
 backend/uploaded_resumes/
+**/uploaded_resumes/
+uploaded_resumes/
 
 # spaCy models
 *.whl
@@ -25,12 +27,13 @@ backend/uploaded_resumes/
 
 # Node / Frontend
 node_modules/
+**/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnp/
 .pnp.js
-frontend/resume-screener-ui/build/
+frontend/build/
 
 # IDE
 .vscode/
