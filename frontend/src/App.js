@@ -527,16 +527,14 @@ function App() {
                   />
 
                   <div className="radial-gauge-card stat-summary-card">
-                    <div className="stat-summary-icon" style={{ backgroundColor: "rgba(59, 130, 246, 0.12)", color: "#3B82F6" }}>
+                    <div className="stat-summary-badge">
                       <CheckCircle size={28} />
                     </div>
-                    <div className="stat-summary-content">
-                      <span className="stat-summary-val" style={{ color: getScoreColor(result.combined_score) }}>
-                        {result.ats?.matched_keywords?.length || 0} / {result.ats?.total_jd_skills || 0}
-                      </span>
-                      <span className="radial-label">Keywords Matched</span>
-                      <span className="radial-sublabel">Found in candidate resume</span>
+                    <div className="stat-summary-value" style={{ color: getScoreColor(result.ats?.ats_score || result.combined_score) }}>
+                      {result.ats?.matched_keywords?.length || 0} / {result.ats?.total_jd_skills || 0}
                     </div>
+                    <div className="radial-label">Keywords Matched</div>
+                    <div className="radial-sublabel">Found in candidate resume</div>
                   </div>
                 </div>
 
