@@ -12,7 +12,7 @@ import axios from "axios";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "./App.css";
 
-const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
+const API_URL = (process.env.REACT_APP_API_URL || "http://localhost:8000").replace(/\/$/, "");
 
 // Helper for color coding scores based on Electric Indigo & Cyber Silver palette
 const getScoreColor = (score) => {
