@@ -253,6 +253,7 @@ function App() {
   const [activeTab, setActiveTab] = useState("overview"); // overview | cover | tips | snapshot
   const [searchQuery, setSearchQuery] = useState("");
   const [filterScore, setFilterScore] = useState(0);
+  const [chartCategory, setChartCategory] = useState("top"); // "top" | "jd" | "all"
 
   // Bulk State
   const [bulkFiles, setBulkFiles] = useState([]);
@@ -265,6 +266,13 @@ function App() {
     setActiveTab("overview");
     setSearchQuery("");
     setFilterScore(0);
+    setChartCategory("top");
+  };
+
+  const truncateLabel = (label, maxLength = 13) => {
+    if (!label) return "";
+    if (label.length <= maxLength) return label;
+    return label.substring(0, maxLength - 1) + "…";
   };
 
   const handleUpload = async () => {
@@ -313,11 +321,34 @@ function App() {
     }
   };
 
-  const skillScores = result
-    ? Object.entries(result.analysis?.skill_scores || {}).map(([skill, score]) => ({ skill, score }))
+  const jdSkillsList = result?.ats?.total_jd_skills_list || [];
+  const missingKws = result?.analysis?.missing_keywords || [];
+  const matchedKws = result?.ats?.matched_keywords || [];
+
+  const rawSkillEntries = result
+    ? Object.entries(result.analysis?.skill_scores || {}).map(([skill, score]) => ({
+        skill,
+        score,
+        isJdSkill: jdSkillsList.includes(skill) || missingKws.includes(skill) || matchedKws.includes(skill),
+      }))
     : [];
 
-  const filteredSkills = skillScores.filter(
+  let categorySkills = [];
+  if (chartCategory === "top") {
+    categorySkills = [...rawSkillEntries].sort((a, b) => b.score - a.score).slice(0, 15);
+  } else if (chartCategory === "jd") {
+    categorySkills = rawSkillEntries.filter((s) => s.isJdSkill);
+    missingKws.forEach((mSkill) => {
+      if (!categorySkills.some((s) => s.skill.toLowerCase() === mSkill.toLowerCase())) {
+        categorySkills.push({ skill: mSkill, score: 0, isJdSkill: true });
+      }
+    });
+    categorySkills.sort((a, b) => b.score - a.score);
+  } else {
+    categorySkills = [...rawSkillEntries].sort((a, b) => b.score - a.score);
+  }
+
+  const filteredSkills = categorySkills.filter(
     ({ skill, score }) =>
       skill.toLowerCase().includes(searchQuery.toLowerCase()) && score >= filterScore
   );
@@ -583,6 +614,30 @@ function App() {
                     <div className="chart-section">
                       <h3 className="section-title"><BarChart2 size={18} /> Skill Scoring Breakdown</h3>
 
+                      <div className="chart-category-tabs">
+                        <button
+                          type="button"
+                          className={`chart-cat-btn ${chartCategory === "top" ? "active" : ""}`}
+                          onClick={() => setChartCategory("top")}
+                        >
+                          🌟 Top 15 Skills
+                        </button>
+                        <button
+                          type="button"
+                          className={`chart-cat-btn ${chartCategory === "jd" ? "active" : ""}`}
+                          onClick={() => setChartCategory("jd")}
+                        >
+                          🎯 Position Target Skills ({jdSkillsList.length || matchedKws.length + missingKws.length})
+                        </button>
+                        <button
+                          type="button"
+                          className={`chart-cat-btn ${chartCategory === "all" ? "active" : ""}`}
+                          onClick={() => setChartCategory("all")}
+                        >
+                          📊 All Detected Skills ({rawSkillEntries.length})
+                        </button>
+                      </div>
+
                       <div className="chart-controls">
                         <div className="custom-form-group mb-0 flex-grow-1">
                           <label className="custom-label"><Search size={14} /> Filter Skill Name</label>
@@ -611,45 +666,51 @@ function App() {
 
                       {filteredSkills.length > 0 ? (
                         <div className="chart-container">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={filteredSkills} margin={{ top: 30, right: 10, left: -20, bottom: 60 }}>
-                              <XAxis
-                                dataKey="skill"
-                                interval={0}
-                                tick={{ fill: darkMode ? "#94A3B8" : "#475569", fontSize: 12 }}
-                                angle={-40}
-                                textAnchor="end"
-                                height={90}
-                              />
-                              <YAxis domain={[0, 100]} tick={{ fill: darkMode ? "#94A3B8" : "#475569", fontSize: 12 }} />
-                              <Tooltip
-                                contentStyle={{
-                                  backgroundColor: darkMode ? "#1E293B" : "#FFFFFF",
-                                  borderColor: darkMode ? "#334155" : "#E2E8F0",
-                                  borderRadius: "12px",
-                                  color: darkMode ? "#F8FAFC" : "#0F172A",
-                                  boxShadow: "0 8px 24px rgba(0,0,0,0.18)"
-                                }}
-                              />
-                              <Bar dataKey="score" radius={[6, 6, 0, 0]}>
-                                {filteredSkills.map((entry, i) => (
-                                  <Cell key={i} fill={getBarColor(entry.score)} />
-                                ))}
-                                <LabelList
-                                  dataKey="score"
-                                  position="top"
-                                  fill={darkMode ? "#94A3B8" : "#475569"}
-                                  fontSize={11}
-                                  fontWeight="bold"
-                                />
-                              </Bar>
-                            </BarChart>
-                          </ResponsiveContainer>
+                          <div className="chart-scroll-wrapper">
+                            <div style={{ width: `${Math.max(100, (filteredSkills.length * 48 / 800) * 100)}%`, minWidth: `${Math.max(550, filteredSkills.length * 48)}px`, height: 330 }}>
+                              <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={filteredSkills} margin={{ top: 30, right: 15, left: -20, bottom: 70 }} barCategoryGap="15%">
+                                  <XAxis
+                                    dataKey="skill"
+                                    interval={0}
+                                    tickFormatter={(val) => truncateLabel(val, 13)}
+                                    tick={{ fill: darkMode ? "#94A3B8" : "#475569", fontSize: 11, fontWeight: 500 }}
+                                    angle={-45}
+                                    textAnchor="end"
+                                    height={85}
+                                  />
+                                  <YAxis domain={[0, 100]} tick={{ fill: darkMode ? "#94A3B8" : "#475569", fontSize: 12 }} />
+                                  <Tooltip
+                                    formatter={(value, name, item) => [`${value}% Score`, item.payload.skill]}
+                                    contentStyle={{
+                                      backgroundColor: darkMode ? "#1E293B" : "#FFFFFF",
+                                      borderColor: darkMode ? "#334155" : "#E2E8F0",
+                                      borderRadius: "12px",
+                                      color: darkMode ? "#F8FAFC" : "#0F172A",
+                                      boxShadow: "0 8px 24px rgba(0,0,0,0.18)"
+                                    }}
+                                  />
+                                  <Bar dataKey="score" barSize={24} radius={[6, 6, 0, 0]}>
+                                    {filteredSkills.map((entry, i) => (
+                                      <Cell key={i} fill={getBarColor(entry.score)} />
+                                    ))}
+                                    <LabelList
+                                      dataKey="score"
+                                      position="top"
+                                      fill={darkMode ? "#94A3B8" : "#475569"}
+                                      fontSize={11}
+                                      fontWeight="bold"
+                                    />
+                                  </Bar>
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                          </div>
                         </div>
                       ) : (
                         <div className="empty-chart">
                           <p className="subtitle">No skills match the current search filter.</p>
-                          <button className="btn btn-link text-indigo" onClick={() => { setSearchQuery(""); setFilterScore(0); }}>
+                          <button className="btn btn-link text-indigo" onClick={() => { setSearchQuery(""); setFilterScore(0); setChartCategory("all"); }}>
                             Reset Filters
                           </button>
                         </div>

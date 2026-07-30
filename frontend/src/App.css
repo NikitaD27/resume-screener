@@ -856,8 +856,57 @@ body.dark-mode .kw-chip.missing {
 }
 
 .chart-container {
-  height: 320px;
+  height: 340px;
   width: 100%;
+}
+
+.chart-category-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.chart-cat-btn {
+  padding: 8px 16px;
+  border-radius: 50px;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.chart-cat-btn:hover {
+  background: var(--indigo-light);
+  color: var(--indigo-primary);
+}
+
+.chart-cat-btn.active {
+  background: linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%);
+  color: white;
+  border-color: transparent;
+  box-shadow: var(--indigo-glow);
+}
+
+.chart-scroll-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  padding-bottom: 12px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--indigo-primary) transparent;
+}
+
+.chart-scroll-wrapper::-webkit-scrollbar {
+  height: 6px;
+}
+
+.chart-scroll-wrapper::-webkit-scrollbar-thumb {
+  background: var(--indigo-primary);
+  border-radius: 10px;
 }
 
 .empty-chart {

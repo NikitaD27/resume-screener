@@ -301,13 +301,14 @@ def calculate_ats_score(resume_text: str, jd: str):
     jd_skills = find_skills_in_text(jd)
     resume_skills = find_skills_in_text(resume_text)
     if not jd_skills:
-        return {"ats_score": 0, "matched_keywords": [], "total_jd_skills": 0}
+        return {"ats_score": 0, "matched_keywords": [], "total_jd_skills": 0, "total_jd_skills_list": []}
     matched = jd_skills.intersection(resume_skills)
     score = round((len(matched) / len(jd_skills)) * 100, 2)
     return {
         "ats_score": score,
         "matched_keywords": sorted(matched),
         "total_jd_skills": len(jd_skills),
+        "total_jd_skills_list": sorted(jd_skills),
     }
 
 
