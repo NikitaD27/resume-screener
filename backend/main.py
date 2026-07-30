@@ -3,6 +3,7 @@ import re
 import shutil
 import traceback
 import numpy as np
+from concurrent.futures import ThreadPoolExecutor
 import pdfplumber
 from docx import Document
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
@@ -212,7 +213,7 @@ def extract_text(file_path: str) -> str:
 
 
 def find_skills_in_text(text: str) -> set:
-    """Find all matching skills in text using registry + canonical resolution NLP extraction."""
+    """Find all matching skills in text using strict registry + canonical resolution."""
     text_clean = text.replace('\n', ' ')
     text_lower = text_clean.lower()
     found = set()
@@ -224,7 +225,7 @@ def find_skills_in_text(text: str) -> set:
                 found.add(canonical)
                 break
 
-    # 2. Dynamic NLP Extraction if spacy is available
+    # 2. Dynamic NLP Extraction: ONLY accept noun chunks if they resolve to canonical skills
     if nlp is not None:
         try:
             doc = nlp(text_clean[:3000])
@@ -235,22 +236,9 @@ def find_skills_in_text(text: str) -> set:
                     '', chunk_str, flags=re.IGNORECASE
                 ).strip()
 
-                # Try canonical match first
                 canonical = match_canonical_skill(clean)
                 if canonical:
                     found.add(canonical)
-                    continue
-
-                clean_lower = clean.lower()
-                if MONTHS_REGEX.search(clean_lower) or ACTION_WORDS_REGEX.search(clean_lower):
-                    continue
-
-                if 3 <= len(clean) <= 30 and re.match(r'^[A-Z0-9][A-Za-z0-9\.\-\/\s]+$', clean):
-                    if clean_lower not in NON_SKILL_WORDS and not any(w == clean_lower for w in NON_SKILL_WORDS):
-                        if clean.isupper() or "/" in clean or "-" in clean or "." in clean:
-                            found.add(clean)
-                        else:
-                            found.add(clean.title())
         except Exception as e:
             print(f"Spacy extraction skipped: {e}")
 
@@ -432,32 +420,36 @@ def analyse_resume(resume_text: str, jd: str):
         "email": email_val
     }
 
-    # RAG LLM feedback
+    # RAG LLM feedback, cover letter, and resume tips executed concurrently for 3x speedup
     chunks = chunk_text(resume_text)
     context = "\n\n".join(retrieve_relevant_chunks(chunks, jd))
-    llm_feedback = call_llm(
-        f"You are an expert HR recruiter. Analyse this resume snippet against the job description. "
-        f"Give a professional 2-3 sentence verdict on fit.\n\nResume:\n{context}\n\nJob Description:\n{jd[:800]}",
-        prompt_type="verdict",
-        fallback_data=fallback_data
-    )
-
-    # Cover letter
-    cover_letter = call_llm(
-        f"Write a concise, professional cover letter (3 paragraphs) based on this resume and job description.\n"
-        f"Resume:\n{resume_text[:2000]}\n\nJob Description:\n{jd[:800]}",
-        prompt_type="cover_letter",
-        fallback_data=fallback_data
-    )
-
-    # Resume tips
-    resume_tips = call_llm(
-        f"List exactly 3 specific, actionable suggestions to improve this resume for the job description below. "
-        f"For each, rewrite the bullet point.\nMissing keywords: {', '.join(missing_keywords[:10])}\n"
-        f"Resume:\n{resume_text[:1500]}\n\nJob Description:\n{jd[:800]}",
-        prompt_type="resume_tips",
-        fallback_data=fallback_data
-    )
+    
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        f_feedback = executor.submit(
+            call_llm,
+            f"You are an expert HR recruiter. Analyse this resume snippet against the job description. "
+            f"Give a professional 2-3 sentence verdict on fit.\n\nResume:\n{context}\n\nJob Description:\n{jd[:800]}",
+            "verdict",
+            fallback_data
+        )
+        f_cover = executor.submit(
+            call_llm,
+            f"Write a concise, professional cover letter (3 paragraphs) based on this resume and job description.\n"
+            f"Resume:\n{resume_text[:2000]}\n\nJob Description:\n{jd[:800]}",
+            "cover_letter",
+            fallback_data
+        )
+        f_tips = executor.submit(
+            call_llm,
+            f"List exactly 3 specific, actionable suggestions to improve this resume for the job description below. "
+            f"For each, rewrite the bullet point.\nMissing keywords: {', '.join(missing_keywords[:10])}\n"
+            f"Resume:\n{resume_text[:1500]}\n\nJob Description:\n{jd[:800]}",
+            "resume_tips",
+            fallback_data
+        )
+        llm_feedback = f_feedback.result()
+        cover_letter = f_cover.result()
+        resume_tips = f_tips.result()
 
     return {
         "semantic_score": semantic,

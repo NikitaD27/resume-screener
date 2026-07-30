@@ -2,11 +2,12 @@ import React, { useState, useEffect } from "react";
 import { Spinner } from "react-bootstrap";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList, Cell,
+  PieChart, Pie, Legend,
 } from "recharts";
 import {
   UploadCloud, Moon, Sun, Search, SlidersHorizontal, FileText,
   BarChart2, CheckCircle, AlertCircle, Copy, Sparkles, Users,
-  Trash2, ArrowRight, Zap, Target, Check
+  Trash2, ArrowRight, Zap, Target, Check, ChevronDown, ChevronUp
 } from "lucide-react";
 import axios from "axios";
 import "bootstrap/dist/css/bootstrap.min.css";
@@ -155,8 +156,33 @@ function FileDropzone({ file, setFile, accept = ".pdf,.docx", labelText = "Drag 
 }
 
 // ─── Multi File Dropzone for Bulk HR Mode ──────────────────────────────────────
-function BulkFileDropzone({ files, setFiles }) {
+function BulkFileDropzone({ files, setFiles, onShowLimitModal }) {
   const [isDragOver, setIsDragOver] = useState(false);
+
+  useEffect(() => {
+    if (files.length > 10) {
+      setFiles((prev) => prev.slice(0, 10));
+      onShowLimitModal();
+    }
+  }, [files, setFiles, onShowLimitModal]);
+
+  const processFiles = (newFileList) => {
+    const combined = [...files, ...Array.from(newFileList)];
+    const unique = [];
+    const names = new Set();
+    for (const f of combined) {
+      if (!names.has(f.name)) {
+        names.add(f.name);
+        unique.push(f);
+      }
+    }
+    if (unique.length > 10) {
+      onShowLimitModal();
+      setFiles(unique.slice(0, 10));
+    } else {
+      setFiles(unique);
+    }
+  };
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -169,14 +195,27 @@ function BulkFileDropzone({ files, setFiles }) {
     e.preventDefault();
     setIsDragOver(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      setFiles(Array.from(e.dataTransfer.files));
+      processFiles(e.dataTransfer.files);
     }
   };
 
   const handleInputChange = (e) => {
     if (e.target.files && e.target.files.length > 0) {
-      setFiles(Array.from(e.target.files));
+      processFiles(e.target.files);
+      e.target.value = "";
     }
+  };
+
+  const removeSingleFile = (idx, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setFiles((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const clearAllFiles = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setFiles([]);
   };
 
   return (
@@ -186,43 +225,77 @@ function BulkFileDropzone({ files, setFiles }) {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <input
-        type="file"
-        id="bulk-file-input"
-        className="dropzone-input"
-        accept=".pdf,.docx"
-        multiple
-        onChange={handleInputChange}
-      />
       {files.length === 0 ? (
-        <label htmlFor="bulk-file-input" className="dropzone-label">
-          <div className="dropzone-icon-circle">
-            <Users size={30} className="dropzone-icon" />
-          </div>
-          <div className="dropzone-text-group">
-            <span className="dropzone-title">Drag &amp; Drop multiple Resumes here</span>
-            <span className="dropzone-subtitle">or click to select up to 10 resumes (PDF, DOCX)</span>
-          </div>
-        </label>
+        <>
+          <input
+            type="file"
+            id="bulk-file-input"
+            className="dropzone-input"
+            accept=".pdf,.docx"
+            multiple
+            onChange={handleInputChange}
+          />
+          <label htmlFor="bulk-file-input" className="dropzone-label">
+            <div className="dropzone-icon-circle">
+              <Users size={30} className="dropzone-icon" />
+            </div>
+            <div className="dropzone-text-group">
+              <span className="dropzone-title">Drag &amp; Drop multiple Resumes here</span>
+              <span className="dropzone-subtitle">Upload up to 10 PDF or Word resumes</span>
+            </div>
+          </label>
+        </>
       ) : (
         <div className="bulk-selected-container">
+          <input
+            type="file"
+            id="bulk-file-input-hidden"
+            style={{ display: "none" }}
+            accept=".pdf,.docx"
+            multiple
+            onChange={handleInputChange}
+          />
+
           <div className="bulk-header-info">
-            <span className="fw-bold">{files.length} candidate resume(s) attached</span>
-            <button
-              type="button"
-              className="btn btn-sm btn-outline-danger py-0"
-              onClick={(e) => {
-                e.stopPropagation();
-                setFiles([]);
-              }}
-            >
-              Clear all
-            </button>
+            <span className="fw-bold fs-6 text-main">
+              {files.length} candidate resume(s) attached
+            </span>
+            <div className="d-flex align-items-center gap-2">
+              {files.length < 10 && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-primary rounded-pill px-3 py-1 fw-bold"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    document.getElementById("bulk-file-input-hidden")?.click();
+                  }}
+                >
+                  + Add More
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-danger rounded-pill px-3 py-1 fw-bold"
+                onClick={clearAllFiles}
+              >
+                Clear all
+              </button>
+            </div>
           </div>
-          <div className="bulk-file-tags">
+
+          <div className="bulk-file-tags custom-scrollbar" onWheel={(e) => e.stopPropagation()}>
             {files.map((f, i) => (
               <span key={i} className="bulk-file-tag">
-                <FileText size={13} /> {f.name}
+                <FileText size={13} className="text-indigo-icon" />
+                <span className="file-tag-name text-truncate" title={f.name}>{f.name}</span>
+                <button
+                  type="button"
+                  className="file-tag-remove"
+                  onClick={(e) => removeSingleFile(i, e)}
+                  title="Remove file"
+                >
+                  <Trash2 size={12} />
+                </button>
               </span>
             ))}
           </div>
@@ -254,12 +327,26 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterScore, setFilterScore] = useState(0);
   const [chartCategory, setChartCategory] = useState("top"); // "top" | "jd" | "all"
+  const [chartViewMode, setChartViewMode] = useState("donut"); // "donut" | "matrix" | "bars"
+  const [selectedCategoryName, setSelectedCategoryName] = useState(null);
+  const [matrixSubMode, setMatrixSubMode] = useState("grid"); // "grid" | "tiered"
 
   // Bulk State
   const [bulkFiles, setBulkFiles] = useState([]);
   const [bulkJd, setBulkJd] = useState("");
   const [bulkLoading, setBulkLoading] = useState(false);
   const [rankings, setRankings] = useState(null);
+  const [selectedCandidateIndex, setSelectedCandidateIndex] = useState(0);
+  const [expandedRows, setExpandedRows] = useState({});
+  const [leaderboardViewMode, setLeaderboardViewMode] = useState("feed"); // "feed" | "split" | "grid" | "accordion"
+  const [showLimitModal, setShowLimitModal] = useState(false);
+
+  const toggleRowExpand = (idx) => {
+    setExpandedRows((prev) => ({
+      ...prev,
+      [idx]: !prev[idx]
+    }));
+  };
 
   const resetSingleResults = () => {
     setResult(null);
@@ -267,6 +354,9 @@ function App() {
     setSearchQuery("");
     setFilterScore(0);
     setChartCategory("top");
+    setChartViewMode("donut");
+    setSelectedCategoryName(null);
+    setMatrixSubMode("grid");
   };
 
   const truncateLabel = (label, maxLength = 13) => {
@@ -333,6 +423,58 @@ function App() {
       }))
     : [];
 
+  const SKILL_CATEGORY_MAP = {
+    "AI / ML & LLMs": ["LLMs", "Reinforcement Learning", "Agentic AI", "Fine-tuning", "RAG", "Prompt Engineering", "Generative AI", "Machine Learning", "Deep Learning", "NLP", "Computer Vision", "PyTorch", "TensorFlow", "LangChain", "LlamaIndex", "Hugging Face", "OpenAI", "Gemini", "Groq", "vLLM", "Ollama", "CrewAI", "Vector DB", "Embeddings", "Scikit-Learn", "Pandas", "NumPy", "AI/ML", "YOLOv5", "Vector Search"],
+    "Web & Frameworks": ["React", "Vue", "Angular", "Next.js", "Node.js", "Express.js", "FastAPI", "Django", "Flask", "Tailwind CSS", "Bootstrap", "Recharts", "Full-Stack", "REST API", "GraphQL", "Microservices", "HTML", "CSS"],
+    "Databases & Cloud": ["PostgreSQL", "MongoDB", "MySQL", "SQLite", "Redis", "Firebase", "AWS", "Azure", "GCP", "Docker", "Kubernetes", "Git", "CI/CD", "Linux", "DevOps", "SaaS"],
+    "Core Languages": ["Python", "JavaScript", "TypeScript", "Java", "C++", "C#", "Go", "Rust", "SQL", "Bash", "ES6"]
+  };
+
+  const getCategoryForSkill = (skill) => {
+    for (const [cat, skills] of Object.entries(SKILL_CATEGORY_MAP)) {
+      if (skills.some((s) => s.toLowerCase() === skill.toLowerCase())) {
+        return cat;
+      }
+    }
+    return "Other Technical";
+  };
+
+  const categoryColors = {
+    "AI / ML & LLMs": "#4F46E5",
+    "Web & Frameworks": "#3B82F6",
+    "Databases & Cloud": "#10B981",
+    "Core Languages": "#F59E0B",
+    "Other Technical": "#8B5CF6"
+  };
+
+  const categoryMap = {};
+  rawSkillEntries.forEach(({ skill, score }) => {
+    const cat = getCategoryForSkill(skill);
+    if (!categoryMap[cat]) {
+      categoryMap[cat] = { name: cat, count: 0, totalScore: 0, color: categoryColors[cat] || "#64748B", skills: [] };
+    }
+    categoryMap[cat].count += 1;
+    categoryMap[cat].totalScore += score;
+    categoryMap[cat].skills.push({ skill, score });
+  });
+
+  const categoryChartData = Object.values(categoryMap).map((c) => ({
+    name: c.name,
+    value: c.count,
+    avgScore: Math.round(c.totalScore / c.count),
+    color: c.color,
+    skills: c.skills.sort((a, b) => b.score - a.score)
+  }));
+
+  const activeCategory = categoryChartData.find((c) => c.name === selectedCategoryName) || categoryChartData[0];
+
+  const getProficiencyLabel = (score) => {
+    if (score >= 90) return { label: "Expert", color: "#10B981" };
+    if (score >= 75) return { label: "Proficient", color: "#3B82F6" };
+    if (score >= 60) return { label: "Intermediate", color: "#38BDF8" };
+    return { label: "Foundational", color: "#F59E0B" };
+  };
+
   let categorySkills = [];
   if (chartCategory === "top") {
     categorySkills = [...rawSkillEntries].sort((a, b) => b.score - a.score).slice(0, 15);
@@ -368,6 +510,28 @@ function App() {
 
   return (
     <div className="app-root">
+
+      {/* Capping Alert Popup Modal */}
+      {showLimitModal && (
+        <div className="modal-backdrop-custom fade-in" onClick={() => setShowLimitModal(false)}>
+          <div className="modal-box-custom" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-icon-header warning">
+              <AlertCircle size={32} />
+            </div>
+            <h3 className="modal-title">Batch Limit Reached</h3>
+            <p className="modal-body-text">
+              You can upload up to 10 resumes per batch. We have automatically kept the first 10 candidate resumes.
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary rounded-pill px-4 py-2 fw-bold"
+              onClick={() => setShowLimitModal(false)}
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Header ── */}
       <header className="app-header">
@@ -560,8 +724,10 @@ function App() {
                 {activeTab === "overview" && (
                   <div className="tab-content-wrapper">
 
-                    <div className="two-col-grid mb-4">
-                      <div className="assessment-box">
+                    {/* ── 70% / 30% Dynamic Sub-Panel Row ── */}
+                    <div className="assessment-subpanel-grid mb-4">
+                      {/* Left 70%: AI Assessment text block */}
+                      <div className="assessment-main-panel">
                         <h3 className="section-title text-indigo">
                           <Sparkles size={18} /> Recruiter AI Assessment
                         </h3>
@@ -570,19 +736,26 @@ function App() {
                         </div>
                       </div>
 
-                      <div className="assessment-box">
+                      {/* Right 30%: Sleek Sidebar for Missing Target Keywords */}
+                      <div className="missing-skills-sidebar">
                         <h3 className="section-title text-terracotta">
                           <AlertCircle size={18} /> Missing Target Keywords
                         </h3>
-                        <div className="text-box-styled min-h-120">
+                        <div className="sidebar-styled-box">
                           {result.analysis?.missing_keywords?.length > 0 ? (
-                            <div className="kw-chips">
+                            <div className="sidebar-kw-stack">
                               {result.analysis.missing_keywords.map((kw, i) => (
-                                <span key={i} className="kw-chip missing">{kw}</span>
+                                <span key={i} className="kw-chip missing w-100">
+                                  <span>{kw}</span>
+                                  <span className="kw-missing-badge">Missing</span>
+                                </span>
                               ))}
                             </div>
                           ) : (
-                            <span className="text-muted"><Check size={16} /> All key target skills matched!</span>
+                            <div className="sidebar-success-state">
+                              <CheckCircle size={22} className="text-emerald" />
+                              <span>All target skills matched!</span>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -608,112 +781,218 @@ function App() {
 
                     <div className="section-divider" />
 
-                    {/* Skill Mapping Chart */}
+                    {/* Skill Mapping Section */}
                     <div className="chart-section">
-                      <h3 className="section-title"><BarChart2 size={18} /> Skill Scoring Breakdown</h3>
+                      <h3 className="section-title mb-4"><BarChart2 size={18} /> Skill Scoring &amp; Category Breakdown</h3>
 
-                      <div className="chart-category-tabs">
-                        <button
-                          type="button"
-                          className={`chart-cat-btn ${chartCategory === "top" ? "active" : ""}`}
-                          onClick={() => setChartCategory("top")}
-                        >
-                          🌟 Top 15 Skills
-                        </button>
-                        <button
-                          type="button"
-                          className={`chart-cat-btn ${chartCategory === "jd" ? "active" : ""}`}
-                          onClick={() => setChartCategory("jd")}
-                        >
-                          🎯 Position Target Skills ({jdSkillsList.length || matchedKws.length + missingKws.length})
-                        </button>
-                        <button
-                          type="button"
-                          className={`chart-cat-btn ${chartCategory === "all" ? "active" : ""}`}
-                          onClick={() => setChartCategory("all")}
-                        >
-                          📊 All Detected Skills ({rawSkillEntries.length})
-                        </button>
-                      </div>
+                      {/* Master Split Dashboard Layout */}
+                      <div className="split-dashboard-wrapper fade-in">
+                          {/* Donut Distribution Card at the top */}
+                          <div className="split-donut-header-card mb-4">
+                            <div className="donut-header-left">
+                              <h4 className="split-header-title">Technical Domain Distribution</h4>
+                              <p className="split-header-subtitle">
+                                {rawSkillEntries.length} Total Skills Categorized Across {categoryChartData.length} Competency Domains
+                              </p>
+                            </div>
 
-                      <div className="chart-controls">
-                        <div className="custom-form-group mb-0 flex-grow-1">
-                          <label className="custom-label"><Search size={14} /> Filter Skill Name</label>
-                          <input
-                            type="text"
-                            className="form-control"
-                            placeholder="e.g. Python, Git..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                          />
-                        </div>
-                        <div className="custom-form-group mb-0 flex-grow-1">
-                          <label className="custom-label">
-                            <SlidersHorizontal size={14} /> Min Skill Score: {filterScore}%
-                          </label>
-                          <input
-                            type="range"
-                            className="form-range custom-range"
-                            min="0"
-                            max="100"
-                            value={filterScore}
-                            onChange={(e) => setFilterScore(Number(e.target.value))}
-                          />
-                        </div>
-                      </div>
-
-                      {filteredSkills.length > 0 ? (
-                        <div className="chart-container">
-                          <div className="chart-scroll-wrapper">
-                            <div style={{ width: `${Math.max(100, (filteredSkills.length * 48 / 800) * 100)}%`, minWidth: `${Math.max(550, filteredSkills.length * 48)}px`, height: 330 }}>
-                              <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={filteredSkills} margin={{ top: 30, right: 15, left: -20, bottom: 70 }} barCategoryGap="15%">
-                                  <XAxis
-                                    dataKey="skill"
-                                    interval={0}
-                                    tickFormatter={(val) => truncateLabel(val, 13)}
-                                    tick={{ fill: darkMode ? "#94A3B8" : "#475569", fontSize: 11, fontWeight: 500 }}
-                                    angle={-45}
-                                    textAnchor="end"
-                                    height={85}
-                                  />
-                                  <YAxis domain={[0, 100]} tick={{ fill: darkMode ? "#94A3B8" : "#475569", fontSize: 12 }} />
+                            <div className="split-donut-chart-container">
+                              <ResponsiveContainer width={190} height={140}>
+                                <PieChart>
+                                  <Pie
+                                    data={categoryChartData}
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius={36}
+                                    outerRadius={58}
+                                    paddingAngle={4}
+                                    dataKey="value"
+                                    onClick={(entry) => setSelectedCategoryName(entry.name)}
+                                    style={{ cursor: "pointer" }}
+                                  >
+                                    {categoryChartData.map((entry, index) => (
+                                      <Cell
+                                        key={`cell-${index}`}
+                                        fill={entry.color}
+                                        stroke={activeCategory?.name === entry.name ? "#FFFFFF" : "transparent"}
+                                        strokeWidth={activeCategory?.name === entry.name ? 2 : 0}
+                                      />
+                                    ))}
+                                  </Pie>
                                   <Tooltip
-                                    formatter={(value, name, item) => [`${value}% Score`, item.payload.skill]}
+                                    formatter={(value, name, item) => [`${value} Skills`, item.payload.name]}
                                     contentStyle={{
                                       backgroundColor: darkMode ? "#1E293B" : "#FFFFFF",
                                       borderColor: darkMode ? "#334155" : "#E2E8F0",
-                                      borderRadius: "12px",
+                                      borderRadius: "10px",
                                       color: darkMode ? "#F8FAFC" : "#0F172A",
-                                      boxShadow: "0 8px 24px rgba(0,0,0,0.18)"
                                     }}
                                   />
-                                  <Bar dataKey="score" barSize={24} radius={[6, 6, 0, 0]}>
-                                    {filteredSkills.map((entry, i) => (
-                                      <Cell key={i} fill={getBarColor(entry.score)} />
-                                    ))}
-                                    <LabelList
-                                      dataKey="score"
-                                      position="top"
-                                      fill={darkMode ? "#94A3B8" : "#475569"}
-                                      fontSize={11}
-                                      fontWeight="bold"
-                                    />
-                                  </Bar>
-                                </BarChart>
+                                </PieChart>
                               </ResponsiveContainer>
                             </div>
                           </div>
+
+                          {/* Split Base Grid: Left Category Sidebar (40%) + Right Live Details (60%) */}
+                          <div className="split-dashboard-grid">
+                            {/* LEFT PANEL: Category Sidebar (40% Width) */}
+                            <div className="split-left-sidebar">
+                              {categoryChartData.map((cat, idx) => {
+                                const isActive = activeCategory?.name === cat.name;
+                                return (
+                                  <button
+                                    key={idx}
+                                    type="button"
+                                    className={`split-sidebar-btn ${isActive ? "active" : ""}`}
+                                    style={{
+                                      borderLeftColor: isActive ? cat.color : "transparent"
+                                    }}
+                                    onClick={() => setSelectedCategoryName(cat.name)}
+                                  >
+                                    <div className="split-btn-left">
+                                      <span className="split-btn-dot" style={{ backgroundColor: cat.color }} />
+                                      <span className="split-btn-name">{cat.name}</span>
+                                    </div>
+                                    <span
+                                      className="split-btn-pill"
+                                      style={{
+                                        backgroundColor: isActive ? `${cat.color}25` : undefined,
+                                        color: isActive ? cat.color : undefined
+                                      }}
+                                    >
+                                      {cat.value} skills
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {/* RIGHT PANEL: Live Skill Details Container (60% Width) */}
+                            <div className="split-right-panel">
+                              {activeCategory && (
+                                <div className="split-detail-card">
+                                  {/* Panel Context Header */}
+                                  <div className="split-panel-header">
+                                    <div>
+                                      <h4 className="split-category-heading">{activeCategory.name}</h4>
+                                      <p className="split-category-subtext">
+                                        {activeCategory.value} Total Skills • Avg Score {activeCategory.avgScore}%
+                                      </p>
+                                    </div>
+                                    <span
+                                      className="split-domain-match-badge"
+                                      style={{
+                                        backgroundColor: `${activeCategory.color}15`,
+                                        color: activeCategory.color,
+                                        borderColor: `${activeCategory.color}30`
+                                      }}
+                                    >
+                                      {activeCategory.avgScore}% Domain Match
+                                    </span>
+                                  </div>
+
+                                  {/* Embedded Controls: Live Search + Min Score Slider + Scope Filter */}
+                                  <div className="split-controls-row">
+                                    <div className="split-filter-search">
+                                      <Search size={14} className="text-muted" />
+                                      <input
+                                        type="text"
+                                        className="split-search-input"
+                                        placeholder="Filter skills..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                      />
+                                    </div>
+
+                                    <div className="split-filter-slider">
+                                      <span className="split-slider-label">
+                                        Min: <strong>{filterScore}%</strong>
+                                      </span>
+                                      <input
+                                        type="range"
+                                        min="0"
+                                        max="100"
+                                        step="5"
+                                        value={filterScore}
+                                        onChange={(e) => setFilterScore(Number(e.target.value))}
+                                        className="form-range custom-range-slider"
+                                      />
+                                    </div>
+
+                                    <div className="split-scope-pills">
+                                      <button
+                                        type="button"
+                                        className={`split-scope-btn ${chartCategory === "all" ? "active" : ""}`}
+                                        onClick={() => setChartCategory("all")}
+                                      >
+                                        All
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className={`split-scope-btn ${chartCategory === "top" ? "active" : ""}`}
+                                        onClick={() => setChartCategory("top")}
+                                      >
+                                        Top 15
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className={`split-scope-btn ${chartCategory === "jd" ? "active" : ""}`}
+                                        onClick={() => setChartCategory("jd")}
+                                      >
+                                        JD Targets
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Live Filtered Skill Row Progress Bar Items */}
+                                  <div className="split-skills-stack">
+                                    {activeCategory.skills
+                                      .filter((s) => s.score >= filterScore)
+                                      .filter((s) => s.skill.toLowerCase().includes(searchQuery.toLowerCase()))
+                                      .filter((s) => {
+                                        if (chartCategory === "jd") {
+                                          return jdSkillsList.some((jdSkill) => jdSkill.toLowerCase() === s.skill.toLowerCase());
+                                        }
+                                        return true;
+                                      })
+                                      .slice(0, chartCategory === "top" ? 15 : undefined)
+                                      .map((s, i) => {
+                                        const prof = getProficiencyLabel(s.score);
+                                        return (
+                                          <div key={i} className="split-skill-item">
+                                            <div className="split-skill-info-row">
+                                              <span className="split-skill-title">{s.skill}</span>
+                                              <div className="split-skill-meta">
+                                                <span
+                                                  className="split-prof-tag"
+                                                  style={{ color: prof.color }}
+                                                >
+                                                  {prof.label}
+                                                </span>
+                                                <span className="split-match-percentage">
+                                                  {s.score}% Match
+                                                </span>
+                                              </div>
+                                            </div>
+                                            <div className="split-progress-track">
+                                              <div
+                                                className="split-progress-fill"
+                                                style={{
+                                                  width: `${s.score}%`,
+                                                  backgroundColor: getBarColor(s.score)
+                                                }}
+                                              />
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      ) : (
-                        <div className="empty-chart">
-                          <p className="subtitle">No skills match the current search filter.</p>
-                          <button className="btn btn-link text-indigo" onClick={() => { setSearchQuery(""); setFilterScore(0); setChartCategory("all"); }}>
-                            Reset Filters
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                      </div>
 
                   </div>
                 )}
@@ -804,7 +1083,7 @@ function App() {
                 <h2 className="card-heading">Select Multiple Resumes</h2>
                 <p className="card-subtext">Upload up to 10 PDF or Word resumes.</p>
 
-                <BulkFileDropzone files={bulkFiles} setFiles={setBulkFiles} />
+                <BulkFileDropzone files={bulkFiles} setFiles={setBulkFiles} onShowLimitModal={() => setShowLimitModal(true)} />
               </div>
 
               <div className="glass-card input-card">
@@ -835,10 +1114,10 @@ function App() {
               </button>
             </div>
 
-            {rankings && (
-              <div className="glass-card results-card fade-in">
-                <h2 className="results-title"><BarChart2 size={24} /> Candidate Leaderboard</h2>
-                <div className="table-responsive mt-3">
+            {rankings && rankings.length > 0 && (
+              <div className="glass-card results-card fade-in mt-4">
+                <h2 className="results-title mb-3"><BarChart2 size={24} /> Candidate Leaderboard</h2>
+                <div className="table-responsive">
                   <table className="table custom-table">
                     <thead>
                       <tr>
